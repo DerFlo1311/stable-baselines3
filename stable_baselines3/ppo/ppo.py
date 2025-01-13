@@ -210,7 +210,7 @@ class PPO(OnPolicyAlgorithm):
                     # Convert discrete action from float to long
                     actions = rollout_data.actions.long().flatten()
 
-                values, log_prob, entropy = self.policy.evaluate_actions(rollout_data.observations, actions)
+                values, log_prob, entropy, spike_count, spike_count_fe = self.policy.evaluate_actions(rollout_data.observations, actions)
                 values = values.flatten()
                 # Normalize advantage
                 advantages = rollout_data.advantages
@@ -273,6 +273,28 @@ class PPO(OnPolicyAlgorithm):
                 # Optimization step
                 self.policy.optimizer.zero_grad()
                 loss.backward()
+
+                # Log gradients
+                for name, param in self.policy.named_parameters():
+                    if param.grad is not None:
+                        #print(f"train/grad_{name}", param.grad.norm().item())
+                        self.logger.record(f"grad/{name}", param.grad.norm().item())
+
+                # Convert spike_count tensor to list
+                spike_count_fe = spike_count_fe.tolist()
+                spike_count = spike_count.tolist()
+                # Log spike count values of feature extractor layer-wise
+                for i, count in enumerate(spike_count_fe[0]):
+                    self.logger.record(f"spike_count/feLayer_{i}", count)
+                    
+                # Log spike count values layer-wise
+                for i, count in enumerate(spike_count[0]):
+                    self.logger.record(f"spike_count/layer_{i}", count)
+
+                # Log spike count values of rolloutbuffer layer-wise
+                for i, count in enumerate(self.rollout_buffer.spike_count[0]):
+                    self.logger.record(f"spike_count/bufferLayer_{i}", count)
+
                 # Clip grad norm
                 th.nn.utils.clip_grad_norm_(self.policy.parameters(), self.max_grad_norm)
                 self.policy.optimizer.step()

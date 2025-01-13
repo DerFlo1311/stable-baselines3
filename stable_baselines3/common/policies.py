@@ -643,19 +643,23 @@ class ActorCriticPolicy(BasePolicy):
         """
         # Preprocess the observation if needed
         features = self.extract_features(obs)
+        spike_count_fe = features[1]
+        features = features[0]
         if self.share_features_extractor:
             latent_pi, latent_vf = self.mlp_extractor(features)
         else:
             pi_features, vf_features = features
             latent_pi = self.mlp_extractor.forward_actor(pi_features)
             latent_vf = self.mlp_extractor.forward_critic(vf_features)
+        spike_count = latent_pi[1]
+        latent_pi = latent_pi[0]
         # Evaluate the values for the given observations
         values = self.value_net(latent_vf)
         distribution = self._get_action_dist_from_latent(latent_pi)
         actions = distribution.get_actions(deterministic=deterministic)
         log_prob = distribution.log_prob(actions)
         actions = actions.reshape((-1, *self.action_space.shape))  # type: ignore[misc]
-        return actions, values, log_prob
+        return actions, values, log_prob, spike_count, spike_count_fe
 
     def extract_features(  # type: ignore[override]
         self, obs: PyTorchObs, features_extractor: Optional[BaseFeaturesExtractor] = None
@@ -728,17 +732,21 @@ class ActorCriticPolicy(BasePolicy):
         """
         # Preprocess the observation if needed
         features = self.extract_features(obs)
+        spike_count_fe = features[1]
+        features = features[0]
         if self.share_features_extractor:
             latent_pi, latent_vf = self.mlp_extractor(features)
         else:
             pi_features, vf_features = features
             latent_pi = self.mlp_extractor.forward_actor(pi_features)
             latent_vf = self.mlp_extractor.forward_critic(vf_features)
+        spike_count = latent_pi[1]
+        latent_pi = latent_pi[0]
         distribution = self._get_action_dist_from_latent(latent_pi)
         log_prob = distribution.log_prob(actions)
         values = self.value_net(latent_vf)
         entropy = distribution.entropy()
-        return values, log_prob, entropy
+        return values, log_prob, entropy, spike_count, spike_count_fe
 
     def get_distribution(self, obs: PyTorchObs) -> Distribution:
         """
@@ -759,8 +767,10 @@ class ActorCriticPolicy(BasePolicy):
         :return: the estimated values.
         """
         features = super().extract_features(obs, self.vf_features_extractor)
+        spike_count_fe_vf = features[1]
+        features = features[0]
         latent_vf = self.mlp_extractor.forward_critic(features)
-        return self.value_net(latent_vf)
+        return self.value_net(latent_vf), spike_count_fe_vf
 
 
 class ActorCriticCnnPolicy(ActorCriticPolicy):

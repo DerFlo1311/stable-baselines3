@@ -199,7 +199,7 @@ class OnPolicyAlgorithm(BaseAlgorithm):
             with th.no_grad():
                 # Convert to pytorch tensor or to TensorDict
                 obs_tensor = obs_as_tensor(self._last_obs, self.device)
-                actions, values, log_probs = self.policy(obs_tensor)
+                actions, values, log_probs, spike_count, spike_count_fe = self.policy(obs_tensor)
             actions = actions.cpu().numpy()
 
             # Rescale and perform action
@@ -251,6 +251,8 @@ class OnPolicyAlgorithm(BaseAlgorithm):
                 self._last_episode_starts,  # type: ignore[arg-type]
                 values,
                 log_probs,
+                spike_count,
+                spike_count_fe,
             )
             self._last_obs = new_obs  # type: ignore[assignment]
             self._last_episode_starts = dones
@@ -258,6 +260,8 @@ class OnPolicyAlgorithm(BaseAlgorithm):
         with th.no_grad():
             # Compute value for the last timestep
             values = self.policy.predict_values(obs_as_tensor(new_obs, self.device))  # type: ignore[arg-type]
+            _ = values[1]
+            values = values[0]
 
         rollout_buffer.compute_returns_and_advantage(last_values=values, dones=dones)
 
