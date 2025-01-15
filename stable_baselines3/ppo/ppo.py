@@ -280,20 +280,21 @@ class PPO(OnPolicyAlgorithm):
                         #print(f"train/grad_{name}", param.grad.norm().item())
                         self.logger.record(f"grad/{name}", param.grad.norm().item())
 
-                # Convert spike_count tensor to list
-                spike_count_fe = spike_count_fe.tolist()
-                spike_count = spike_count.tolist()
-                # Log spike count values of feature extractor layer-wise
-                for i, count in enumerate(spike_count_fe[0]):
-                    self.logger.record(f"spike_count/feLayer_{i}", count)
-                    
-                # Log spike count values layer-wise
-                for i, count in enumerate(spike_count[0]):
-                    self.logger.record(f"spike_count/layer_{i}", count)
+                if spike_count_fe.sum().item() != -1:
+                    spike_count_fe = spike_count_fe.tolist()
+                    # Log spike count values of feature extractor layer-wise
+                    for i, count in enumerate(spike_count_fe[0]):
+                        self.logger.record(f"spike_count/feLayer_{i}", count)
+
+                if spike_count.sum().item() != -1:
+                    spike_count = spike_count.tolist()
+                    # Log spike count values layer-wise
+                    for i, count in enumerate(spike_count[0]):
+                        self.logger.record(f"spike_count/layer_{i}", count)
 
                 # Log spike count values of rolloutbuffer layer-wise
-                for i, count in enumerate(self.rollout_buffer.spike_count[0]):
-                    self.logger.record(f"spike_count/bufferLayer_{i}", count)
+                #for i, count in enumerate(self.rollout_buffer.spike_count[0]):
+                #    self.logger.record(f"spike_count/bufferLayer_{i}", count)
 
                 # Clip grad norm
                 th.nn.utils.clip_grad_norm_(self.policy.parameters(), self.max_grad_norm)

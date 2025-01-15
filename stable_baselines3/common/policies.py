@@ -643,16 +643,21 @@ class ActorCriticPolicy(BasePolicy):
         """
         # Preprocess the observation if needed
         features = self.extract_features(obs)
-        spike_count_fe = features[1]
-        features = features[0]
+        if isinstance(features, tuple):
+            features, spike_count_fe = features
+        else:
+            spike_count_fe = th.tensor(-1, dtype=th.int)
+
         if self.share_features_extractor:
             latent_pi, latent_vf = self.mlp_extractor(features)
         else:
             pi_features, vf_features = features
             latent_pi = self.mlp_extractor.forward_actor(pi_features)
             latent_vf = self.mlp_extractor.forward_critic(vf_features)
-        spike_count = latent_pi[1]
-        latent_pi = latent_pi[0]
+        if isinstance(latent_pi, tuple):
+            latent_pi, spike_count = latent_pi
+        else:
+            spike_count = th.tensor(-1, dtype=th.int)
         # Evaluate the values for the given observations
         values = self.value_net(latent_vf)
         distribution = self._get_action_dist_from_latent(latent_pi)
@@ -732,16 +737,23 @@ class ActorCriticPolicy(BasePolicy):
         """
         # Preprocess the observation if needed
         features = self.extract_features(obs)
-        spike_count_fe = features[1]
-        features = features[0]
+        if isinstance(features, tuple):
+            features, spike_count_fe = features
+        else:
+            spike_count_fe = th.tensor(-1, dtype=th.int)
+
         if self.share_features_extractor:
             latent_pi, latent_vf = self.mlp_extractor(features)
         else:
             pi_features, vf_features = features
             latent_pi = self.mlp_extractor.forward_actor(pi_features)
             latent_vf = self.mlp_extractor.forward_critic(vf_features)
-        spike_count = latent_pi[1]
-        latent_pi = latent_pi[0]
+
+        if isinstance(latent_pi, tuple):
+            latent_pi, spike_count = latent_pi
+        else:
+            spike_count = th.tensor(-1, dtype=th.int)
+
         distribution = self._get_action_dist_from_latent(latent_pi)
         log_prob = distribution.log_prob(actions)
         values = self.value_net(latent_vf)
@@ -767,8 +779,10 @@ class ActorCriticPolicy(BasePolicy):
         :return: the estimated values.
         """
         features = super().extract_features(obs, self.vf_features_extractor)
-        spike_count_fe_vf = features[1]
-        features = features[0]
+        if isinstance(features, tuple):
+            features, spike_count_fe_vf = features
+        else:
+            spike_count_fe_vf = th.tensor(-1, dtype=th.int)
         latent_vf = self.mlp_extractor.forward_critic(features)
         return self.value_net(latent_vf), spike_count_fe_vf
 

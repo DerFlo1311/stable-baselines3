@@ -260,8 +260,8 @@ class OnPolicyAlgorithm(BaseAlgorithm):
         with th.no_grad():
             # Compute value for the last timestep
             values = self.policy.predict_values(obs_as_tensor(new_obs, self.device))  # type: ignore[arg-type]
-            _ = values[1]
-            values = values[0]
+            # Drop spike_count of critic network
+            values, _ = values
 
         rollout_buffer.compute_returns_and_advantage(last_values=values, dones=dones)
 
