@@ -768,7 +768,11 @@ class ActorCriticPolicy(BasePolicy):
         :return: the action distribution.
         """
         features = super().extract_features(obs, self.pi_features_extractor)
+        if isinstance(features, tuple):
+            features, spike_count_fe = features
         latent_pi = self.mlp_extractor.forward_actor(features)
+        if isinstance(latent_pi, tuple):
+            latent_pi, spike_count = latent_pi
         return self._get_action_dist_from_latent(latent_pi)
 
     def predict_values(self, obs: PyTorchObs) -> th.Tensor:
