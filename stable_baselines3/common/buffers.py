@@ -444,6 +444,8 @@ class RolloutBuffer(BaseBuffer):
         episode_start: np.ndarray,
         value: th.Tensor,
         log_prob: th.Tensor,
+        spike_count: th.Tensor,
+        spike_count_fe: th.Tensor,
     ) -> None:
         """
         :param obs: Observation
@@ -473,6 +475,8 @@ class RolloutBuffer(BaseBuffer):
         self.episode_starts[self.pos] = np.array(episode_start)
         self.values[self.pos] = value.clone().cpu().numpy().flatten()
         self.log_probs[self.pos] = log_prob.clone().cpu().numpy()
+        self.spike_count = spike_count.clone().cpu().numpy()
+        self.spike_count_fe = spike_count_fe.clone().cpu().numpy()
         self.pos += 1
         if self.pos == self.buffer_size:
             self.full = True

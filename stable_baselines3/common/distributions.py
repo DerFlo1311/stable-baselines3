@@ -11,6 +11,9 @@ from torch.distributions import Bernoulli, Categorical, Normal
 
 from stable_baselines3.common.preprocessing import get_action_dim
 
+import h5py
+import lava.lib.dl.slayer as slayer
+
 SelfDistribution = TypeVar("SelfDistribution", bound="Distribution")
 SelfDiagGaussianDistribution = TypeVar("SelfDiagGaussianDistribution", bound="DiagGaussianDistribution")
 SelfSquashedDiagGaussianDistribution = TypeVar(
@@ -129,11 +132,12 @@ class DiagGaussianDistribution(Distribution):
     :param action_dim:  Dimension of the action space.
     """
 
-    def __init__(self, action_dim: int):
+    def __init__(self, action_dim: int, neuron_params: dict = {}):
         super().__init__()
         self.action_dim = action_dim
         self.mean_actions = None
         self.log_std = None
+        self.neuron_params = neuron_params
 
     def proba_distribution_net(self, latent_dim: int, log_std_init: float = 0.0) -> Tuple[nn.Module, nn.Parameter]:
         """
@@ -145,7 +149,7 @@ class DiagGaussianDistribution(Distribution):
         :param log_std_init: Initial value for the log standard deviation
         :return:
         """
-        mean_actions = nn.Linear(latent_dim, self.action_dim)
+        mean_actions = CubaDenseAction(self.neuron_params, latent_dim, self.action_dim, delay=False)
         # TODO: allow action dependent std
         log_std = nn.Parameter(th.ones(self.action_dim) * log_std_init, requires_grad=True)
         return mean_actions, log_std
@@ -212,8 +216,8 @@ class SquashedDiagGaussianDistribution(DiagGaussianDistribution):
     :param epsilon: small value to avoid NaN due to numerical imprecision.
     """
 
-    def __init__(self, action_dim: int, epsilon: float = 1e-6):
-        super().__init__(action_dim)
+    def __init__(self, action_dim: int, epsilon: float = 1e-6, neuron_params: dict = {}):
+        super().__init__(action_dim, neuron_params)
         # Avoid NaN (prevents division by zero or log of zero)
         self.epsilon = epsilon
         self.gaussian_actions: Optional[th.Tensor] = None
@@ -259,6 +263,16 @@ class SquashedDiagGaussianDistribution(DiagGaussianDistribution):
         log_prob = self.log_prob(action, self.gaussian_actions)
         return action, log_prob
 
+class CubaDenseAction(slayer.block.cuba.Dense):
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+
+    def export_hdf5_pre(self, filename):
+        filename = filename.replace('/model_final', '') + '/network_act_out.net'
+        # network export to hdf5 format
+        h = h5py.File(filename, 'w')
+        layer = h.create_group('layer')
+        self.export_hdf5(layer.create_group(f'{0}'))
 
 class CategoricalDistribution(Distribution):
     """
@@ -267,9 +281,10 @@ class CategoricalDistribution(Distribution):
     :param action_dim: Number of discrete actions
     """
 
-    def __init__(self, action_dim: int):
+    def __init__(self, action_dim: int, neuron_params: dict = {}):
         super().__init__()
         self.action_dim = action_dim
+        self.neuron_params = neuron_params
 
     def proba_distribution_net(self, latent_dim: int) -> nn.Module:
         """
@@ -281,7 +296,7 @@ class CategoricalDistribution(Distribution):
             of the policy network (before the action layer)
         :return:
         """
-        action_logits = nn.Linear(latent_dim, self.action_dim)
+        action_logits = CubaDenseAction(self.neuron_params, latent_dim, self.action_dim, delay=False)
         return action_logits
 
     def proba_distribution(self: SelfCategoricalDistribution, action_logits: th.Tensor) -> SelfCategoricalDistribution:
@@ -318,9 +333,10 @@ class MultiCategoricalDistribution(Distribution):
     :param action_dims: List of sizes of discrete action spaces
     """
 
-    def __init__(self, action_dims: List[int]):
+    def __init__(self, action_dims: List[int], neuron_params: dict = {}):
         super().__init__()
         self.action_dims = action_dims
+        self.neuron_params = neuron_params
 
     def proba_distribution_net(self, latent_dim: int) -> nn.Module:
         """
@@ -333,7 +349,7 @@ class MultiCategoricalDistribution(Distribution):
         :return:
         """
 
-        action_logits = nn.Linear(latent_dim, sum(self.action_dims))
+        action_logits = CubaDenseAction(self.neuron_params, latent_dim, sum(self.action_dims), delay=False)
         return action_logits
 
     def proba_distribution(
@@ -375,9 +391,10 @@ class BernoulliDistribution(Distribution):
     :param action_dim: Number of binary actions
     """
 
-    def __init__(self, action_dims: int):
+    def __init__(self, action_dims: int, neuron_params: dict = {}):
         super().__init__()
         self.action_dims = action_dims
+        self.neuron_params = neuron_params
 
     def proba_distribution_net(self, latent_dim: int) -> nn.Module:
         """
@@ -388,7 +405,7 @@ class BernoulliDistribution(Distribution):
             of the policy network (before the action layer)
         :return:
         """
-        action_logits = nn.Linear(latent_dim, self.action_dims)
+        action_logits = CubaDenseAction(self.neuron_params, latent_dim, self.action_dims, delay=False)
         return action_logits
 
     def proba_distribution(self: SelfBernoulliDistribution, action_logits: th.Tensor) -> SelfBernoulliDistribution:
@@ -416,6 +433,8 @@ class BernoulliDistribution(Distribution):
         actions = self.actions_from_params(action_logits)
         log_prob = self.log_prob(actions)
         return actions, log_prob
+    
+    
 
 
 class StateDependentNoiseDistribution(Distribution):
@@ -455,6 +474,7 @@ class StateDependentNoiseDistribution(Distribution):
         squash_output: bool = False,
         learn_features: bool = False,
         epsilon: float = 1e-6,
+        neuron_params: dict = {},
     ):
         super().__init__()
         self.action_dim = action_dim
@@ -469,6 +489,7 @@ class StateDependentNoiseDistribution(Distribution):
             self.bijector = TanhBijector(epsilon)
         else:
             self.bijector = None
+        self.neuron_params = neuron_params
 
     def get_std(self, log_std: th.Tensor) -> th.Tensor:
         """
@@ -526,7 +547,7 @@ class StateDependentNoiseDistribution(Distribution):
         :return:
         """
         # Network for the deterministic action, it represents the mean of the distribution
-        mean_actions_net = nn.Linear(latent_dim, self.action_dim)
+        mean_actions_net = CubaDenseAction(self.neuron_params, latent_dim, self.action_dim, delay=False)
         # When we learn features for the noise, the feature dimension
         # can be different between the policy and the noise network
         self.latent_sde_dim = latent_dim if latent_sde_dim is None else latent_sde_dim
@@ -661,7 +682,7 @@ class TanhBijector:
 
 
 def make_proba_distribution(
-    action_space: spaces.Space, use_sde: bool = False, dist_kwargs: Optional[Dict[str, Any]] = None
+    action_space: spaces.Space, use_sde: bool = False, neuron_params: dict = {}, dist_kwargs: Optional[Dict[str, Any]] = None
 ) -> Distribution:
     """
     Return an instance of Distribution for the correct type of action space
@@ -677,16 +698,16 @@ def make_proba_distribution(
 
     if isinstance(action_space, spaces.Box):
         cls = StateDependentNoiseDistribution if use_sde else DiagGaussianDistribution
-        return cls(get_action_dim(action_space), **dist_kwargs)
+        return cls(get_action_dim(action_space), neuron_params, **dist_kwargs)
     elif isinstance(action_space, spaces.Discrete):
-        return CategoricalDistribution(int(action_space.n), **dist_kwargs)
+        return CategoricalDistribution(int(action_space.n), neuron_params, **dist_kwargs)
     elif isinstance(action_space, spaces.MultiDiscrete):
-        return MultiCategoricalDistribution(list(action_space.nvec), **dist_kwargs)
+        return MultiCategoricalDistribution(list(action_space.nvec), neuron_params, **dist_kwargs)
     elif isinstance(action_space, spaces.MultiBinary):
         assert isinstance(
             action_space.n, int
         ), f"Multi-dimensional MultiBinary({action_space.n}) action space is not supported. You can flatten it instead."
-        return BernoulliDistribution(action_space.n, **dist_kwargs)
+        return BernoulliDistribution(action_space.n, neuron_params, **dist_kwargs)
     else:
         raise NotImplementedError(
             "Error: probability distribution, not implemented for action space"

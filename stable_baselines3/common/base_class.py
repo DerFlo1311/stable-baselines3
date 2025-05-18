@@ -41,6 +41,9 @@ from stable_baselines3.common.vec_env import (
 )
 from stable_baselines3.common.vec_env.patch_gym import _convert_space, _patch_env
 
+# import h5py for saving lava-dl models
+import h5py
+
 SelfBaseAlgorithm = TypeVar("SelfBaseAlgorithm", bound="BaseAlgorithm")
 
 
@@ -864,3 +867,7 @@ class BaseAlgorithm(ABC):
         params_to_save = self.get_parameters()
 
         save_to_zip_file(path, data=data, params=params_to_save, pytorch_variables=pytorch_variables)
+
+        self.policy.features_extractor.export_hdf5(path)
+        self.policy._export_hdf5(path)
+        self.policy.action_net.export_hdf5_pre(path)
