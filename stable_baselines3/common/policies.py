@@ -365,7 +365,7 @@ class BasePolicy(BaseModel, ABC):
         obs_tensor, vectorized_env = self.obs_to_tensor(observation)
 
         with th.no_grad():
-            actions = self._predict(obs_tensor, deterministic=deterministic)
+            actions, spike_count, spike_count_fe = self._predict(obs_tensor, deterministic=deterministic)
         # Convert to numpy, and reshape to the original action shape
         actions = actions.cpu().numpy().reshape((-1, *self.action_space.shape))  # type: ignore[misc, assignment]
 
@@ -383,7 +383,7 @@ class BasePolicy(BaseModel, ABC):
             assert isinstance(actions, np.ndarray)
             actions = actions.squeeze(axis=0)
 
-        return actions, state  # type: ignore[return-value]
+        return actions, state, spike_count, spike_count_fe # type: ignore[return-value]
 
     def scale_action(self, action: np.ndarray) -> np.ndarray:
         """
@@ -723,7 +723,8 @@ class ActorCriticPolicy(BasePolicy):
         :param deterministic: Whether to use stochastic or deterministic actions
         :return: Taken action according to the policy
         """
-        return self.get_distribution(observation).get_actions(deterministic=deterministic)
+        distribution, spike_count, spike_count_fe = self.get_distribution(observation)
+        return distribution.get_actions(deterministic=deterministic), spike_count, spike_count_fe
 
     def evaluate_actions(self, obs: PyTorchObs, actions: th.Tensor) -> tuple[th.Tensor, th.Tensor, Optional[th.Tensor]]:
         """
@@ -773,7 +774,7 @@ class ActorCriticPolicy(BasePolicy):
         latent_pi = self.mlp_extractor.forward_actor(features)
         if isinstance(latent_pi, tuple):
             latent_pi, spike_count = latent_pi
-        return self._get_action_dist_from_latent(latent_pi)
+        return self._get_action_dist_from_latent(latent_pi), spike_count, spike_count_fe
 
     def predict_values(self, obs: PyTorchObs) -> th.Tensor:
         """
