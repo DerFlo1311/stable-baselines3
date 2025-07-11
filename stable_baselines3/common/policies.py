@@ -451,6 +451,7 @@ class ActorCriticPolicy(BasePolicy):
         action_space: spaces.Space,
         lr_schedule: Schedule,
         neuron_params: Optional[Dict[str, Any]] = None,
+        neuron: str = "CUBA",
         net_arch: Optional[Union[List[int], Dict[str, List[int]]]] = None,
         activation_fn: Type[nn.Module] = nn.Tanh,
         ortho_init: bool = True,
@@ -466,6 +467,8 @@ class ActorCriticPolicy(BasePolicy):
         optimizer_class: Type[th.optim.Optimizer] = th.optim.Adam,
         optimizer_kwargs: Optional[Dict[str, Any]] = None,
     ):
+        self.neuron = neuron
+        self.neuron_params = neuron_params
         if optimizer_kwargs is None:
             optimizer_kwargs = {}
             # Small values to avoid NaN in Adam optimizer
@@ -531,7 +534,7 @@ class ActorCriticPolicy(BasePolicy):
         self.dist_kwargs = dist_kwargs
 
         # Action distribution
-        self.action_dist = make_proba_distribution(action_space, use_sde=use_sde, neuron_params=neuron_params, dist_kwargs=dist_kwargs)
+        self.action_dist = make_proba_distribution(action_space, use_sde=use_sde, neuron_params=neuron_params, neuron=neuron, dist_kwargs=dist_kwargs)
 
         self._build(lr_schedule)
 
@@ -698,8 +701,15 @@ class ActorCriticPolicy(BasePolicy):
         :param latent_pi: Latent code for the actor
         :return: Action distribution
         """
-        spiking_actions = self.action_net(latent_pi)
-        mean_actions = th.mean(spiking_actions, dim=-1)
+        neuron = self.neuron
+        #neuron = 'ANN'
+        if neuron == 'CUBA' or neuron == 'ALIF' or neuron == 'SigmaDelta':
+            latent_pi = latent_pi.unsqueeze(-1)
+            spiking_actions = self.action_net(latent_pi)
+            mean_actions = th.mean(spiking_actions, dim=-1)
+        else:
+            latent_pi = latent_pi.squeeze(-1)
+            mean_actions = self.action_net(latent_pi)
 
         if isinstance(self.action_dist, DiagGaussianDistribution):
             return self.action_dist.proba_distribution(mean_actions, self.log_std)
